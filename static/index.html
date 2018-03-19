@@ -1,0 +1,215 @@
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.1/dist/leaflet.css"
+   integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
+   crossorigin=""/>
+    <style>
+        #mapid { height: 800px; }
+        html, body {
+            height: 100%;
+        }
+
+        .container {
+            display: flex;
+            flex-flow: column;
+            height: 100%;
+        }
+
+        .footer {
+            flex: 0 0 auto;
+            padding: 10px;
+        }
+
+        .content {
+            flex: 1 1 auto;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+ <div class="content" id="mapid">
+
+ </div>
+<div class="footer">
+ <label>Linie autobusowe (oddzielone przecinkiem) <input id="lines" value="" /></label> <button id="filter">Filtruj</button>
+ </div>
+</div>
+
+
+
+ <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
+   integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
+   crossorigin=""></script>
+
+    <script>
+        const map = L.map('mapid').setView([52.2297, 21.0122], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+
+    </script>
+
+<script>
+
+    function fetchData(done) {
+        const xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200) {
+                let data = JSON.parse(xhttp.responseText);
+                done(data);
+            }
+        };
+        xhttp.open("GET", "bus.json", true);
+        xhttp.send();
+    }
+
+    function matches(row, lines) {
+        for (let j = 0; j < lines.length; ++j) {
+            if (row['Lines'] === lines[j].toString()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function filterData(data, lines) {
+        const filtered = [];
+        for (let i = 0; i < data.result.length; ++i) {
+            const row = data.result[i];
+            if (matches(row, lines)) {
+                filtered.push(row);
+            }
+        }
+        return {"result": filtered};
+    }
+
+    function refreshViewHelper(oldMarkerMap, data) {
+        const newMarkerMap = {};
+
+        function hashRow(row) {
+            return row['Lines'] + '/' + row['Brigade'];
+        }
+
+        for (let i = 0; i < data.result.length; ++i) {
+            const row = data.result[i];
+            const hash = hashRow(row);
+
+            if (oldMarkerMap.hasOwnProperty(hash) && oldMarkerMap[hash].length > 0) {
+                const marker = oldMarkerMap[hash].shift();
+                marker.setLatLng([row['Lat'], row['Lon']]);
+                marker.setPopupContent(JSON.stringify(row, undefined, 1));
+                if (newMarkerMap.hasOwnProperty(hash)) {
+                    newMarkerMap[hash].push(marker);
+                } else {
+                    newMarkerMap[hash] = [marker];
+                }
+            } else {
+                const marker = L.marker([row['Lat'], row['Lon']]).addTo(markers)
+                    .bindPopup(JSON.stringify(row, undefined, 1));
+                if (newMarkerMap.hasOwnProperty(hash)) {
+                    newMarkerMap[hash].push(marker);
+                } else {
+                    newMarkerMap[hash] = [marker];
+                }
+            }
+        }
+
+        for (const key in oldMarkerMap) {
+            if (oldMarkerMap.hasOwnProperty(key)) {
+                for (let i = 0; i < oldMarkerMap[key].length; ++i) {
+                    oldMarkerMap[key][i].removeFrom(markers);
+                }
+            }
+        }
+
+        return newMarkerMap;
+    }
+
+    function refreshView() {
+        window.markerMap = refreshViewHelper(window.markerMap, filterData(currentData, localSettings.lines));
+    }
+
+    function getInputLines() {
+        return document.getElementById("lines").value.replace(/ /g, ',').split(',');
+    }
+
+    function localStorageEnabled() {
+        return 'localStorage' in window && window['localStorage'] !== null;
+    }
+
+    function extend(){
+        for(let i=1; i<arguments.length; i++)
+            for(let key in arguments[i])
+                if(arguments[i].hasOwnProperty(key))
+                    arguments[0][key] = arguments[i][key];
+        return arguments[0];
+    }
+
+    function setUpSettings() {
+        let localSettings = {};
+        if (localStorageEnabled() && 'userSettings' in localStorage && localStorage.userSettings !== null) {
+            localSettings = JSON.parse(localStorage.userSettings);
+        }
+        return extend({}, defaultSettings, localSettings);
+    }
+
+    function saveUserSettings() {
+        if (localStorageEnabled()) {
+            localStorage.userSettings = JSON.stringify(localSettings);
+        }
+    }
+
+
+    function update() {
+        fetchData(function (data) {
+            currentData = data;
+            refreshView();
+        });
+    }
+
+    function changeSettings() {
+        currentLines = getInputLines();
+        localSettings.lines = currentLines;
+        refreshView();
+        saveUserSettings();
+    }
+
+    const defaultSettings = {
+        lines: [128, 175, 504]
+    };
+
+    const localSettings = setUpSettings();
+
+    const markers = L.layerGroup();
+    markers.addTo(map);
+
+    let currentData = {result: []};
+    window.markerMap =  {};
+
+    update();
+    setInterval(update, 2000);
+
+    document.getElementById("lines").value = localSettings.lines.join(",");
+
+    document.getElementById("filter").onclick = function() {
+        changeSettings();
+    };
+
+    document.getElementById("lines").onkeydown = function() {
+        if (event.keyCode === 13) {
+            changeSettings();
+        }
+    }
+
+</script>
+
+
+</body>
+
+</html>
