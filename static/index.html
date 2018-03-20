@@ -57,6 +57,12 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 <script>
 
+    const REFRESH_RATE = 20;
+    const EST_DATA_RATE = 10000;
+    // Momentum of the point. We want it to finish more or less 10% distance
+    // from the last known destination.
+    const MOMENTUM = Math.pow(0.10, REFRESH_RATE/EST_DATA_RATE);
+
     function fetchData(done) {
         const xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
@@ -102,7 +108,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
             if (oldMarkerMap.hasOwnProperty(hash) && oldMarkerMap[hash].length > 0) {
                 const marker = oldMarkerMap[hash].shift();
-                marker.setLatLng([row['Lat'], row['Lon']]);
+                const oldLL = marker.getLatLng();
+                marker.setLatLng([
+                  MOMENTUM*oldLL.lat + (1.-MOMENTUM)*row['Lat'],
+                  MOMENTUM*oldLL.lng + (1.-MOMENTUM)*row['Lon']
+                ]);
                 marker.setPopupContent(JSON.stringify(row, undefined, 1));
                 if (newMarkerMap.hasOwnProperty(hash)) {
                     newMarkerMap[hash].push(marker);
@@ -169,7 +179,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     function update() {
         fetchData(function (data) {
             currentData = data;
-            refreshView();
         });
     }
 
@@ -194,6 +203,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
     update();
     setInterval(update, 2000);
+    setInterval(refreshView, REFRESH_RATE);
 
     document.getElementById("lines").value = localSettings.lines.join(",");
 
