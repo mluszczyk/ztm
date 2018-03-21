@@ -1,3 +1,5 @@
 /api_key.py
 /static/bus.json
 /deploy.sh
+/sentry_uri.py
+__pycache__

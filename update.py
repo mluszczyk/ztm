@@ -3,12 +3,17 @@ import time
 import requests
 import datetime
 
-from api_key import API
-
+from raven import Client
 from requests import Timeout
+
+from api_key import API
+from sentry_uri import SENTRY_URI
 
 
 def main():
+    if SENTRY_URI is not None:
+        Client(SENTRY_URI)
+
     while True:
         url = "https://api.um.warszawa.pl/api/action/busestrams_get/?resource_id=f2e5503e-927d-4ad3-9500-4ab9e55deb59&apikey={}&type=1".format(
             API)
